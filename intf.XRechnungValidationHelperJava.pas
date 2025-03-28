@@ -1,4 +1,4 @@
-{
+﻿{
 Copyright (C) 2025 Landrix Software GmbH & Co. KG
 Sven Harazim, info@landrix.de
 Version 3.0.2
@@ -16,9 +16,11 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages
-  ,System.IOUtils, System.SysUtils, System.Variants, System.Classes, System.Types
-  ,System.Win.COMObj,System.UITypes
-  ,Xml.xmldom,Xml.XMLDoc,Xml.XMLIntf,Xml.XMLSchema
+  ,System.SysUtils, System.Variants, System.Classes
+  ,System.IOUtils,System.Win.COMObj,System.UITypes
+  ,Xml.xmldom,Xml.XMLDoc,Xml.XMLIntf,Xml.XMLSchema,
+  System.Types,
+  UXRechnungTypesOns
   ;
 
 type
@@ -35,7 +37,8 @@ type
     function SetValitoolPath(const _Path : String) : IXRechnungValidationHelperJava;
     function Validate(const _InvoiceXMLData : String; out _CmdOutput,_ValidationResultAsXML,_ValidationResultAsHTML : String) : Boolean;
     function ValidateFile(const _InvoiceXMLFilename : String; out _CmdOutput,_ValidationResultAsXML,_ValidationResultAsHTML : String) : Boolean;
-    function Visualize(const _InvoiceXMLData : String; out _CmdOutput,_VisualizationAsHTML : String) : Boolean;
+    function ValidateFiles(const _InvoiceXMLFilenames : TStringList; out _CmdOutput : String) : Boolean; // Von TH ergänzt
+	function Visualize(const _InvoiceXMLData : String; out _CmdOutput,_VisualizationAsHTML : String) : Boolean;
     function VisualizeAsPdf(const _InvoiceXMLData : String; out _CmdOutput : String; out _VisualizationAsPdf : TMemoryStream) : Boolean;
     function VisualizeFile(const _InvoiceXMLFilename : String; out _CmdOutput,_VisualizationAsHTML : String) : Boolean;
     function VisualizeFileAsPdf(const _InvoiceXMLFilename : String; out _CmdOutput : String; out _VisualizationAsPdf : TMemoryStream) : Boolean;
@@ -85,6 +88,7 @@ type
     function SetValitoolPath(const _Path : String) : IXRechnungValidationHelperJava;
     function Validate(const _InvoiceXMLData : String; out _CmdOutput,_ValidationResultAsXML,_ValidationResultAsHTML : String) : Boolean;
     function ValidateFile(const _InvoiceXMLFilename : String; out _CmdOutput,_ValidationResultAsXML,_ValidationResultAsHTML : String) : Boolean;
+    function ValidateFiles(const _InvoiceXMLFilenames : TStringList; out _CmdOutput : String) : Boolean; // Von TH ergänzt
     function Visualize(const _InvoiceXMLData : String; out _CmdOutput,_VisualizationAsHTML : String) : Boolean;
     function VisualizeAsPdf(const _InvoiceXMLData : String; out _CmdOutput : String; out _VisualizationAsPdf : TMemoryStream) : Boolean;
     function VisualizeFile(const _InvoiceXMLFilename : String; out _CmdOutput,_VisualizationAsHTML : String) : Boolean;
@@ -904,7 +908,7 @@ begin
              ' -xsl:'+QuoteIfContainsSpace(VisualizationLibPath+'xsl\xr-pdf.xsl')+
              ' -o:'+QuoteIfContainsSpace(ChangeFileExt(tmpFilename,'-.fo'))); // geaendert von pdf auf fo
 
-    cmd.SaveToFile(tmpFilename+'.bat',TEncoding.UTF8); //ToDo
+    cmd.SaveToFile(tmpFilename+'.bat',TEncoding.ANSI); //ToDo
     //cmd.SaveToFile(_InvoiceXMLFilename+'.bat');
 
     Result := ExecAndWait(tmpFilename+'.bat','');
@@ -1107,14 +1111,14 @@ begin
              ' -xsl:'+QuoteIfContainsSpace(VisualizationLibPath+'xsl\xr-pdf.xsl')+
              ' -o:'+QuoteIfContainsSpace(ChangeFileExt(_InvoiceXMLFilename,'-.fo'))); // geaendert von pdf auf fo
 
-    cmd.SaveToFile(_InvoiceXMLFilename+'.bat',TEncoding.UTF8); //ToDo
+    cmd.SaveToFile(ChangeFileExt(_InvoiceXMLFilename, '.bat'),TEncoding.ANSI); //ToDo
     //cmd.SaveToFile(_InvoiceXMLFilename+'.bat');
 
-    Result := ExecAndWait(_InvoiceXMLFilename+'.bat','');
+    Result := ExecAndWait(ChangeFileExt(_InvoiceXMLFilename, '.bat'),'');
 
     _CmdOutput := CmdOutput.Text;
 
-    DeleteFile(_InvoiceXMLFilename+'.bat');
+    DeleteFile(ChangeFileExt(_InvoiceXMLFilename, '.bat'));
 
     if not Result then
       exit;
@@ -1171,5 +1175,99 @@ begin
   else
     Result := _Value;
 end;
+
+
+
+function TXRechnungValidationHelperJava.ValidateFiles(const _InvoiceXMLFilenames: TStringList; out _CmdOutput: String): Boolean;
+var
+  hstrl,cmd: TStringList;
+  tmpFilename, s : String;
+  i: Integer;
+begin
+  Result := false;
+  if (_InvoiceXMLFilenames.Count = 0) and (_InvoiceXMLFilenames.Text = '') then
+  begin
+    raise EValidationException.Create;
+    exit;
+  end;
+  if not FileExists(JavaRuntimeEnvironmentPath+'bin\java.exe') then
+  begin
+    raise EValidationException.Create;
+    exit;
+  end;
+  if not FileExists(ValidatorLibPath+'validationtool-1.5.0-java8-standalone.jar') then
+  begin
+    raise EValidationException.Create;
+    exit;
+  end;
+  if not FileExists(ValidatorConfigurationPath.Text+'scenarios.xml') then
+  begin
+    raise EValidationException.Create;
+    exit;
+  end;
+
+  for i := 0 to _InvoiceXMLFilenames.Count-1 do
+  begin
+    if not FileExists(_InvoiceXMLFilenames[i]) then
+    begin
+      raise EValidationException.Create;
+      exit;
+    end;
+  end;
+
+  hstrl := TStringList.Create;
+  cmd := TStringList.Create;
+  try
+    cmd.Add('pushd '+QuoteIfContainsSpace(ExtractFilePath(_InvoiceXMLFilenames[0])));
+
+    s :=     QuoteIfContainsSpace(JavaRuntimeEnvironmentPath+'bin\java.exe')+' -classpath '+
+             QuoteIfContainsSpace(ValidatorLibPath+'libs')+' -jar '+
+             QuoteIfContainsSpace(ValidatorLibPath+'validationtool-1.5.0-standalone.jar')+' -s '+
+             QuoteIfContainsSpace(ValidatorConfigurationPath.Text+'scenarios.xml')+' -r '+
+             QuoteIfContainsSpace(ValidatorConfigurationPath.Text)+' -h';
+
+    for i := 0 to _InvoiceXMLFilenames.Count-1 do
+    begin
+      s := s + ' ' + QuoteIfContainsSpace(_InvoiceXMLFilenames[i]);
+    end;
+
+    cmd.Add(s);
+
+    cmd.SaveToFile(IncludeTrailingPathDelimiter(ExtractFilePath(_InvoiceXMLFilenames[0]))+'Sammelvalidierung.bat',TEncoding.ANSI);
+
+    Result := ExecAndWait(IncludeTrailingPathDelimiter(ExtractFilePath(_InvoiceXMLFilenames[0]))+'Sammelvalidierung.bat','');
+
+    _CmdOutput := CmdOutput.Text;
+
+    DeleteFile(IncludeTrailingPathDelimiter(ExtractFilePath(_InvoiceXMLFilenames[0]))+'Sammelvalidierung.bat');
+
+    for i := 0 to _InvoiceXMLFilenames.Count-1 do
+    begin
+      tmpFilename := ChangeFileExt(_InvoiceXMLFilenames[i],'-report.xml');
+      if Pos(' ',tmpFilename)>0 then
+        tmpFilename := StringReplace(tmpFilename,' ','%20',[rfReplaceAll]);
+      if FileExists(tmpFilename) then
+      begin
+        //hstrl.LoadFromFile(tmpFilename,TEncoding.UTF8);
+        //_ValidationResultAsXML := hstrl.Text;
+        DeleteFile(tmpFilename);
+      end;
+
+      tmpFilename := ChangeFileExt(_InvoiceXMLFilenames[i],'-report.html');
+      if Pos(' ',tmpFilename)>0 then
+        tmpFilename := StringReplace(tmpFilename,' ','%20',[rfReplaceAll]);
+      if FileExists(tmpFilename) then
+      begin
+        RenameFile(tmpFilename, ChangeFileExt(_InvoiceXMLFilenames[i],'_Validierungsbericht.html'));
+      end;
+    end;
+
+  finally
+    hstrl.Free;
+    cmd.Free;
+  end;
+end;
+
+
 
 end.

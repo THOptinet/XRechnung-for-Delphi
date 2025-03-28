@@ -185,6 +185,7 @@ var
   end;
 
 begin
+  FormatSettings.DecimalSeparator := '.';   // TH hinzugefügt
   Result := false;
   _Error := '';
   try
@@ -498,6 +499,7 @@ var
   end;
 
 begin
+  FormatSettings.DecimalSeparator := '.';   // TH hinzugefügt
   Result := false;
   _Error := '';
   try
@@ -1169,7 +1171,7 @@ begin
     if _Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer <> '' then
     with AddChild('cbc:EndpointID') do
     begin
-      Attributes['schemeID'] := 'EM';
+      Attributes['schemeID'] := 'EM';//_Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer.SchemeID;
       Text := _Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer;
     end;
     if _Invoice.AccountingSupplierParty.IdentifierSellerBuyer <> '' then
@@ -1235,7 +1237,7 @@ begin
     if _Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer <> '' then
     with AddChild('cbc:EndpointID') do
     begin
-      Attributes['schemeID'] := 'EM';
+      Attributes['schemeID'] := 'EM';//_Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer.SchemeID;
       Text := _Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer;
     end;
     if _Invoice.AccountingCustomerParty.IdentifierSellerBuyer <> '' then
@@ -1610,9 +1612,9 @@ var
         with AddChild('ram:AppliedTradeAllowanceCharge') do //auch wenn DiscountOnTheGrossPrice 0 ist ausgeben
         begin
           AddChild('ram:ChargeIndicator').AddChild('udt:Indicator').Text := 'false';
-          //<ram:CalculationPercent>45</ram:CalculationPercent> nicht m�glich bei UBL
+          //<ram:CalculationPercent>45</ram:CalculationPercent> nicht m�glich bei UBL
           AddChild('ram:ActualAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.DiscountOnTheGrossPrice);
-          //<ram:Reason>Rabatt1</ram:Reason> nicht m�glich bei UBL
+          //<ram:Reason>Rabatt1</ram:Reason> nicht m�glich bei UBL
         end;
       end;
       with AddChild('ram:NetPriceProductTradePrice') do
@@ -1657,7 +1659,8 @@ var
       with AddChild('ram:SpecifiedTradeAllowanceCharge') do
       begin
         AddChild('ram:ChargeIndicator').AddChild('udt:Indicator').Text := LowerCase(BoolToStr(_Invoiceline.AllowanceCharges[i].ChargeIndicator,true));
-        if _Invoiceline.AllowanceCharges[i].MultiplierFactorNumeric <> 0 then
+        // Änderung von TH, da es sonst eine Warnung bei Absolutbeträgen gibt // Update 13.8.2024 Prüfen, ob immer noch der Fall
+        if _Invoiceline.AllowanceCharges[i].MultiplierFactorNumeric > 0 then
         begin
           AddChild('ram:CalculationPercent').Text := TXRechnungHelper.FloatToStr(_Invoiceline.AllowanceCharges[i].MultiplierFactorNumeric);
           AddChild('ram:BasisAmount').Text := TXRechnungHelper.AmountToStr(_Invoiceline.AllowanceCharges[i].BaseAmount);
@@ -1775,7 +1778,7 @@ begin
         if _Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer <> '' then
         with AddChild('ram:URIUniversalCommunication').AddChild('ram:URIID') do
         begin
-          Attributes['schemeID'] := 'EM';
+          Attributes['schemeID'] := 'EM';//_Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer.SchemeID;
           Text := _Invoice.AccountingSupplierParty.ElectronicAddressSellerBuyer;
         end;
         if _Invoice.AccountingSupplierParty.VATCompanyID <> '' then
@@ -1834,7 +1837,7 @@ begin
         if _Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer <> '' then
         with AddChild('ram:URIUniversalCommunication').AddChild('ram:URIID') do
         begin
-          Attributes['schemeID'] := 'EM';
+          Attributes['schemeID'] := 'EM';//_Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer.SchemeID;
           Text := _Invoice.AccountingCustomerParty.ElectronicAddressSellerBuyer;
         end;
         //bei AccountingCustomerParty nur eine VAT von beiden

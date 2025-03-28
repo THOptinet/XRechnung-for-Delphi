@@ -25,7 +25,7 @@ interface
 
 //setzt ZUGFeRD-for-Delphi voraus
 //https://github.com/LandrixSoftware/ZUGFeRD-for-Delphi
-{.$DEFINE ZUGFeRD_Support}
+{$DEFINE ZUGFeRD_Support}
 
 uses
   System.SysUtils,System.Classes,System.Types
@@ -1238,6 +1238,9 @@ begin
   if SameText(_Val,'384') then
     Result := itc_CorrectedInvoice
   else
+  if SameText(_Val,'386') then      // Von TH ergänzt
+    Result := itc_PrepaymentInvoice
+  else
   if SameText(_Val,'389') then
     Result := itc_SelfbilledInvoice
   else
@@ -1262,6 +1265,7 @@ begin
     itc_PartialInvoice: Result := '326';
     itc_CommercialInvoice: Result := '380';
     itc_CorrectedInvoice: Result := '384';
+    itc_PrepaymentInvoice: Result := '386'; // Von TH ergänzt
     itc_SelfbilledInvoice: Result := '389';
     itc_CreditNote: Result := '381';
     itc_PartialConstructionInvoice: Result := '875';

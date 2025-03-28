@@ -1,4 +1,4 @@
-﻿{
+{
 License XRechnung-for-Delphi
 
 Copyright (C) 2025 Landrix Software GmbH & Co. KG
@@ -593,6 +593,15 @@ type
     AddressLine : String;
     CountryCode : String;
   end;
+
+  // Von TH
+  TInvoiceElectronicAdress = record
+  public
+    SchemeID: string;
+    Value: string;
+  end;
+  // TH Ende
+
 
   TInvoiceAccountingParty = class(TObject)
   public
