@@ -236,8 +236,20 @@ begin
     end;
     if TXRechnungXMLHelper.SelectNode(xml,'//cac:DespatchDocumentReference/cbc:ID',node) then
       _Invoice.DeliveryReceiptNumber := node.Text;
+    if TXRechnungXMLHelper.SelectNode(xml,'//cac:ReceiptDocumentReference/cbc:ID',node) then
+      _Invoice.ReceiptDocumentReference := node.Text;
+
+    if TXRechnungXMLHelper.SelectNodes(xml,'//cac:OriginatorDocumentReference',nodes) then
+    for i := 0  to nodes.length-1 do
+    with _Invoice.Attachments.AddAttachment(iat_application_None) do
+    begin
+      ID := TXRechnungXMLHelper.SelectNodeText(nodes.item[i],'.//cbc:ID');
+      TypeCode := iatc_50;
+    end;
+
     if TXRechnungXMLHelper.SelectNode(xml,'//cac:ContractDocumentReference/cbc:ID',node) then
       _Invoice.ContractDocumentReference := node.Text;
+
     if TXRechnungXMLHelper.SelectNodes(xml,'//cac:AdditionalDocumentReference',nodes) then
     for i := 0  to nodes.length-1 do
     with _Invoice.Attachments.AddAttachment(iat_application_None) do
@@ -268,6 +280,10 @@ begin
     begin
       if TXRechnungXMLHelper.SelectNode(node,'.//cbc:ActualDeliveryDate',node2) then
         _Invoice.DeliveryInformation.ActualDeliveryDate := TXRechnungHelper.DateFromStrUBLFormat(node2.text);
+      if TXRechnungXMLHelper.SelectNode(node,'.//cac:DeliveryLocation/cbc:ID',node2) then
+      if node2.attributes.getNamedItem('schemeID') <> nil then
+      if node2.attributes.getNamedItem('schemeID').text = '0088' then
+        _Invoice.DeliveryInformation.LocationIdentifier := node2.text;
       if TXRechnungXMLHelper.SelectNode(node,'.//cac:DeliveryLocation/cac:Address/cbc:StreetName',node2) then
         _Invoice.DeliveryInformation.Address.StreetName := node2.text;
       if TXRechnungXMLHelper.SelectNode(node,'.//cac:DeliveryLocation/cac:Address/cbc:AdditionalStreetName',node2) then
@@ -322,6 +338,19 @@ begin
     if TXRechnungXMLHelper.SelectNode(xml,'//cac:PaymentTerms/cbc:Note',node) then
       TXRechnungHelper.ReadPaymentTerms(_Invoice,node.text);
 
+    if TXRechnungXMLHelper.SelectNodes(xml,'//*[local-name()="Invoice"]/cac:PrepaidPayment',nodes) then
+    for i := 0 to nodes.length-1 do
+    with _Invoice.PrepaidPayments.AddPrepaidPayment do
+    begin
+      ID := TXRechnungXMLHelper.SelectNodeText(nodes.item[i],'.//cbc:ID');
+      if TXRechnungXMLHelper.SelectNode(nodes.item[i],'.//cbc:PaidAmount',node) then
+      begin
+        PaidAmountCurrencyID := TXRechnungXMLHelper.SelectAttributeText(node,'currencyID');
+        PaidAmount := TXRechnungHelper.AmountFromStr(node.text);
+      end;
+      InstructionID := TXRechnungXMLHelper.SelectNodeText(nodes.item[i],'.//cbc:InstructionID');
+    end;
+
     if TXRechnungXMLHelper.SelectNodes(xml,'//*[local-name()="'+IfThen(_Invoice.InvoiceTypeCode = itc_CreditNote,'CreditNote','Invoice')+'"]/cac:AllowanceCharge',nodes) then
     for i := 0 to nodes.length-1 do
     with _Invoice.AllowanceCharges.AddAllowanceCharge do
@@ -351,6 +380,7 @@ begin
       //if TXRechnungXMLHelper.SelectNode(nodes.item[i],'.//cac:TaxCategory/cac:TaxScheme/cbc:ID',node) then
       //  VAT := node.text Ausgabe VAT fest programmiert
     end;
+
     if TXRechnungXMLHelper.SelectNode(xml,'//cac:TaxTotal',node) then
     begin
       if TXRechnungXMLHelper.SelectNode(node,'.//cbc:TaxAmount',node2) then
@@ -433,9 +463,7 @@ var
     end;
     if TXRechnungXMLHelper.SelectNode(_Node,'.//ram:SpecifiedLineTradeAgreement',node2) then
     begin
-//        <ram:BuyerOrderReferencedDocument>
-//            <ram:LineID>6171175.1</ram:LineID>
-//        </ram:BuyerOrderReferencedDocument>
+      _InvoiceLine.OrderNumber :=  TXRechnungXMLHelper.SelectNodeText(node2,'.//ram:BuyerOrderReferencedDocument/ram:IssuerAssignedID');
       _InvoiceLine.OrderLineReference :=  TXRechnungXMLHelper.SelectNodeText(node2,'.//ram:BuyerOrderReferencedDocument/ram:LineID');
       if TXRechnungXMLHelper.SelectNode(node2,'.//ram:GrossPriceProductTradePrice',node3) then
       begin
@@ -680,6 +708,10 @@ begin
     begin
       if TXRechnungXMLHelper.SelectNode(nodeApplicableHeaderTradeAgreement,'.//ram:ShipToTradeParty',node2) then
       begin
+        if TXRechnungXMLHelper.SelectNode(node2,'.//ram:GlobalID',node3) then
+        if node3.attributes.getNamedItem('schemeID') <> nil then
+        if node3.attributes.getNamedItem('schemeID').text = '0088' then
+          _Invoice.DeliveryInformation.LocationIdentifier := node3.text;
         _Invoice.DeliveryInformation.Name := TXRechnungXMLHelper.SelectNodeText(node2,'.//ram:Name');
         if TXRechnungXMLHelper.SelectNode(node2,'.//ram:PostalTradeAddress',node3) then
         begin
@@ -708,6 +740,10 @@ begin
       if TXRechnungXMLHelper.SelectNode(nodeApplicableHeaderTradeAgreement,'.//ram:DespatchAdviceReferencedDocument',node2) then
       if TXRechnungXMLHelper.SelectNode(node2,'.//ram:IssuerAssignedID',node3) then
         _Invoice.DeliveryReceiptNumber := Node3.text;
+
+      if TXRechnungXMLHelper.SelectNode(nodeApplicableHeaderTradeAgreement,'.//ram:ReceivingAdviceReferencedDocument',node2) then
+      if TXRechnungXMLHelper.SelectNode(node2,'.//ram:IssuerAssignedID',node3) then
+        _Invoice.ReceiptDocumentReference := Node3.text;
     end;
     if TXRechnungXMLHelper.SelectNode(nodeSupplyChainTradeTransaction,'.//ram:ApplicableHeaderTradeSettlement',nodeApplicableHeaderTradeAgreement) then
     begin
@@ -817,7 +853,8 @@ begin
           end;
           //Restliche Skontoeintraege finden
           for i := 0 to nodes.length-1 do
-          if (TXRechnungXMLHelper.FindNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:CalculationPercent')) then
+          if (TXRechnungXMLHelper.FindNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:CalculationPercent') or
+              TXRechnungXMLHelper.FindNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:ActualDiscountAmount')) then
           begin
             if _Invoice.PaymentTermsType in [iptt_None,iptt_Net] then
               _Invoice.PaymentTermsType := iptt_CashDiscount1
@@ -833,7 +870,13 @@ begin
               _Invoice.PaymentTermCashDiscount1Percent := 0;
               _Invoice.PaymentTermCashDiscount1Base := 0;
               if TXRechnungXMLHelper.SelectNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:BasisPeriodMeasure',node3) then
-                _Invoice.PaymentTermCashDiscount1Days := StrToIntDef(node3.text,0)
+              begin
+                _Invoice.PaymentTermCashDiscount1Days := StrToIntDef(node3.text,0);
+                //Sonderfall beim Einlesen von ZUGFeRD, wird intern von TInvoice nicht unterstuetzt
+                //Das Basisdatum + Skontotage wird auf das Rechnungsdatum + Skontotage umgerechnet
+                if TXRechnungXMLHelper.SelectNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:BasisDateTime/udt:DateTimeString',node3) then
+                  _Invoice.PaymentTermCashDiscount1Days := DaysBetween(Trunc(_Invoice.InvoiceIssueDate),Trunc(TXRechnungHelper.DateFromStrUNCEFACTFormat(node3.text))+_Invoice.PaymentTermCashDiscount1Days);
+              end
               else
               if TXRechnungXMLHelper.FindNode(nodes[i],'.//ram:DueDateDateTime') then
               begin
@@ -855,7 +898,13 @@ begin
               _Invoice.PaymentTermCashDiscount2Percent := 0;
               _Invoice.PaymentTermCashDiscount2Base := 0;
               if TXRechnungXMLHelper.SelectNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:BasisPeriodMeasure',node3) then
-                _Invoice.PaymentTermCashDiscount2Days := StrToIntDef(node3.text,0)
+              begin
+                _Invoice.PaymentTermCashDiscount2Days := StrToIntDef(node3.text,0);
+                //Sonderfall beim Einlesen von ZUGFeRD, wird intern von TInvoice nicht unterstuetzt
+                //Das Basisdatum + Skontotage wird auf das Rechnungsdatum + Skontotage umgerechnet
+                if TXRechnungXMLHelper.SelectNode(nodes[i],'.//ram:ApplicableTradePaymentDiscountTerms/ram:BasisDateTime/udt:DateTimeString',node3) then
+                  _Invoice.PaymentTermCashDiscount2Days := DaysBetween(Trunc(_Invoice.InvoiceIssueDate),Trunc(TXRechnungHelper.DateFromStrUNCEFACTFormat(node3.text))+_Invoice.PaymentTermCashDiscount2Days);
+              end
               else
               if TXRechnungXMLHelper.FindNode(nodes[i],'.//ram:DueDateDateTime') then
               begin
@@ -1035,7 +1084,7 @@ var
       with AddChild('cbc:PriceAmount') do
       begin
         Attributes['currencyID'] := _Invoice.TaxCurrencyCode;
-        Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.NetPriceAmount);
+        Text := TXRechnungHelper.UnitPriceAmountToStrUBL(_Invoiceline.NetPriceAmount);
       end;
       if (_Invoiceline.BaseQuantity <> 0) and (_Invoiceline.BaseQuantityUnitCode <> iuc_None) then
       with AddChild('cbc:BaseQuantity') do
@@ -1050,12 +1099,12 @@ var
         with AddChild('cbc:Amount') do
         begin
           Attributes['currencyID'] := _Invoice.TaxCurrencyCode;
-          Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.DiscountOnTheGrossPrice);
+          Text := TXRechnungHelper.UnitPriceAmountToStrUBL(_Invoiceline.DiscountOnTheGrossPrice);
         end;
         with AddChild('cbc:BaseAmount') do
         begin
           Attributes['currencyID'] := _Invoice.TaxCurrencyCode;
-          Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.GrossPriceAmount);
+          Text := TXRechnungHelper.UnitPriceAmountToStrUBL(_Invoiceline.GrossPriceAmount);
         end;
       end;
     end;
@@ -1136,18 +1185,29 @@ begin
   end;
   if _Invoice.DeliveryReceiptNumber <> '' then
     xRoot.AddChild('cac:DespatchDocumentReference').AddChild('cbc:ID').Text := _Invoice.DeliveryReceiptNumber;
+  if _Invoice.ReceiptDocumentReference <> '' then
+    xRoot.AddChild('cac:ReceiptDocumentReference').AddChild('cbc:ID').Text := _Invoice.ReceiptDocumentReference;
+
+  for i := 0 to _Invoice.Attachments.Count -1 do
+  if (_Invoice.Attachments[i].TypeCode = iatc_50) then //BT-17
+  if (_Invoice.Attachments[i].ID <> '') then
+    xRoot.AddChild('cac:OriginatorDocumentReference').AddChild('cbc:ID').Text := _Invoice.Attachments[i].ID;
+
   if _Invoice.ContractDocumentReference <> '' then
     xRoot.AddChild('cac:ContractDocumentReference').AddChild('cbc:ID').Text := _Invoice.ContractDocumentReference;
 
   for i := 0 to _Invoice.Attachments.Count -1 do
+  if (_Invoice.Attachments[i].TypeCode <> iatc_50) then //BT-17 extra
   begin
     with xRoot.AddChild('cac:AdditionalDocumentReference') do
     begin
       AddChild('cbc:ID').Text := _Invoice.Attachments[i].ID;
-      if _Invoice.Attachments[i].TypeCode = iatc_130 then
+      if (_Invoice.Attachments[i].TypeCode in [iatc_130{,iatc_916}]) then //916 gibt derzeit Fehler bei UBL, ggf. spaeter wieder aktivieren
         AddChild('cbc:DocumentTypeCode').Text := TXRechnungHelper.InvoiceAttachmentTypeCodeToStr(_Invoice.Attachments[i].TypeCode);
       if _Invoice.Attachments[i].DocumentDescription <> '' then
         AddChild('cbc:DocumentDescription').Text := _Invoice.Attachments[i].DocumentDescription;
+      if (_Invoice.Attachments[i].ContainsBinaryObject) or
+         (_Invoice.Attachments[i].ExternalReference <> '') then
       with AddChild('cac:Attachment') do
       begin
         if _Invoice.Attachments[i].ContainsBinaryObject then
@@ -1186,6 +1246,7 @@ begin
       Attributes['schemeID'] := 'SEPA';
       Text := _Invoice.AccountingSupplierParty.BankAssignedCreditorIdentifier;
     end;
+    if _Invoice.AccountingSupplierParty.Name <> '' then
     with AddChild('cac:PartyName') do
     begin
       AddChild('cbc:Name').Text := _Invoice.AccountingSupplierParty.Name;
@@ -1246,6 +1307,7 @@ begin
       Attributes['schemeID'] := '0088';
       Text := _Invoice.AccountingCustomerParty.IdentifierSellerBuyer;
     end;
+    if _Invoice.AccountingCustomerParty.Name <> '' then
     with AddChild('cac:PartyName') do
     begin
       AddChild('cbc:Name').Text := _Invoice.AccountingCustomerParty.Name;
@@ -1309,8 +1371,12 @@ begin
     if (_Invoice.DeliveryInformation.Address.CountryCode <> '') then
     with AddChild('cac:DeliveryLocation') do
     begin
-      //if (_Invoice.DeliveryInformation.LocationIdentifier <> '') then
-      //  AddChild('cbc:ID').Text := _Invoice.DeliveryInformation.LocationIdentifier; //TODO schemeID https://docs.peppol.eu/poacc/billing/3.0/syntax/ubl-invoice/cac-Delivery/cac-DeliveryLocation/cbc-ID/
+      if (_Invoice.DeliveryInformation.LocationIdentifier <> '') then
+      with AddChild('cbc:ID') do
+      begin
+        Attributes['schemeID'] := '0088';
+        Text := _Invoice.DeliveryInformation.LocationIdentifier;
+      end;
       with AddChild('cac:Address') do
       begin
         if _Invoice.DeliveryInformation.Address.StreetName <> '' then
@@ -1433,6 +1499,18 @@ begin
           +#13#10;
       end;
     end;
+  end;
+
+  for i := 0 to _Invoice.PrepaidPayments.Count-1 do
+  with xRoot.AddChild('cac:PrepaidPayment') do
+  begin
+    AddChild('cbc:ID').Text := _Invoice.PrepaidPayments[i].ID;
+    with AddChild('cbc:PaidAmount') do
+    begin
+      Attributes['currencyID'] := _Invoice.PrepaidPayments[i].PaidAmountCurrencyID;
+      Text := TXRechnungHelper.AmountToStr(_Invoice.PrepaidPayments[i].PaidAmount);
+    end;
+    AddChild('cbc:InstructionID').Text := _Invoice.PrepaidPayments[i].InstructionID;
   end;
 
   for i := 0 to _Invoice.AllowanceCharges.Count-1 do
@@ -1594,15 +1672,20 @@ var
     end;
     with _Node.AddChild('ram:SpecifiedLineTradeAgreement') do
     begin
-      if _InvoiceLine.OrderLineReference <> '' then
+      if (_InvoiceLine.OrderLineReference <> '') or
+         ((_InvoiceLine.OrderNumber <> '') and (not _ProfileXRechnung)) then
       with AddChild('ram:BuyerOrderReferencedDocument') do
       begin
-        AddChild('ram:LineID').Text := _InvoiceLine.OrderLineReference;
+        if (not _ProfileXRechnung) then
+        if (_InvoiceLine.OrderNumber <> '') then
+          AddChild('ram:IssuerAssignedID').Text := _InvoiceLine.OrderNumber;
+        if (_InvoiceLine.OrderLineReference <> '') then
+          AddChild('ram:LineID').Text := _InvoiceLine.OrderLineReference;
       end;
       if _Invoiceline.GrossPriceAmount <> 0 then
       with AddChild('ram:GrossPriceProductTradePrice') do
       begin
-        AddChild('ram:ChargeAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.GrossPriceAmount);
+        AddChild('ram:ChargeAmount').Text := TXRechnungHelper.UnitPriceAmountToStrCII(_Invoiceline.GrossPriceAmount);
         if (_Invoiceline.BaseQuantity <> 0) and (_Invoiceline.BaseQuantityUnitCode <> iuc_None) then
         with AddChild('ram:BasisQuantity') do
         begin
@@ -1613,13 +1696,13 @@ var
         begin
           AddChild('ram:ChargeIndicator').AddChild('udt:Indicator').Text := 'false';
           //<ram:CalculationPercent>45</ram:CalculationPercent> nicht m�glich bei UBL
-          AddChild('ram:ActualAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.DiscountOnTheGrossPrice);
+          AddChild('ram:ActualAmount').Text := TXRechnungHelper.UnitPriceAmountToStrCII(_Invoiceline.DiscountOnTheGrossPrice);
           //<ram:Reason>Rabatt1</ram:Reason> nicht m�glich bei UBL
         end;
       end;
       with AddChild('ram:NetPriceProductTradePrice') do
       begin
-        AddChild('ram:ChargeAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(_Invoiceline.NetPriceAmount);
+        AddChild('ram:ChargeAmount').Text := TXRechnungHelper.UnitPriceAmountToStrCII(_Invoiceline.NetPriceAmount);
         if (_Invoiceline.BaseQuantity <> 0) and (_Invoiceline.BaseQuantityUnitCode <> iuc_None) then
         with AddChild('ram:BasisQuantity') do
         begin
@@ -1896,6 +1979,12 @@ begin
       begin
         with AddChild('ram:ShipToTradeParty') do
         begin
+          if _Invoice.DeliveryInformation.LocationIdentifier <> '' then
+          with AddChild('ram:GlobalID') do
+          begin
+            Attributes['schemeID'] := '0088';
+            Text := _Invoice.DeliveryInformation.LocationIdentifier;
+          end;
           AddChild('ram:Name').Text := _Invoice.DeliveryInformation.Name;
           with AddChild('ram:PostalTradeAddress') do
           begin
@@ -1926,6 +2015,12 @@ begin
            .AddChild('ram:IssuerAssignedID') do
       begin
         Text := _Invoice.DeliveryReceiptNumber;
+      end;
+      if (_Invoice.ReceiptDocumentReference <> '') then
+      with AddChild('ram:ReceivingAdviceReferencedDocument')
+           .AddChild('ram:IssuerAssignedID') do
+      begin
+        Text := _Invoice.ReceiptDocumentReference;
       end;
     end;
     with AddChild('ram:ApplicableHeaderTradeSettlement') do
@@ -2141,10 +2236,10 @@ begin
               Attributes['unitCode'] := 'DAY';
             end;
             if lBasisAmount <> 0 then
-              AddChild('ram:BasisAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(lBasisAmount);
+              AddChild('ram:BasisAmount').Text := TXRechnungHelper.UnitPriceAmountToStrCII(lBasisAmount);
             AddChild('ram:CalculationPercent').Text := TXRechnungHelper.PercentageToStr(lSkonto);
             if lActualDiscountAmount <> 0 then
-              AddChild('ram:ActualDiscountAmount').Text := TXRechnungHelper.UnitPriceAmountToStr(lActualDiscountAmount);
+              AddChild('ram:ActualDiscountAmount').Text := TXRechnungHelper.UnitPriceAmountToStrCII(lActualDiscountAmount);
           end;
         end;
       end; //end if _ProfileZUGFeRDExtended then

@@ -28,7 +28,7 @@ interface
 {$DEFINE ZUGFeRD_Support}
 
 uses
-  System.SysUtils,System.Classes,System.Types
+  System.SysUtils,System.Classes,System.Types,System.Math
   ,System.StrUtils,System.DateUtils,System.Contnrs
   ,Xml.XMLDoc,Xml.XMLIntf
   {$IFDEF ZUGFeRD_Support}
@@ -59,7 +59,8 @@ type
     class function DateToStrUNCEFACTFormat(const _Val : TDateTime) : String;
     class function AmountToStr(_Val : Currency) : String;
     class function AmountFromStr(_Val : String) : Currency;
-    class function UnitPriceAmountToStr(_Val : Currency) : String;
+    class function UnitPriceAmountToStrUBL(_Val : Currency) : String;
+    class function UnitPriceAmountToStrCII(_Val : Currency) : String;
     class function UnitPriceAmountFromStr(_Val : String) : Currency;
     class function FloatToStr(_Val : double; _DecimalPlaces : Integer = 2) : String;
     class function FloatFromStr(_Val : String) : double;
@@ -127,8 +128,19 @@ type
   private
     class procedure SaveDocument(_Invoice: TInvoice;_Version : TXRechnungVersion; _Xml : IXMLDocument);
     class function  LoadFromXMLDocument(_Invoice: TInvoice; _XmlDocument: IXMLDocument; out _Error : String {$IFDEF ZUGFeRD_Support};_AdditionalContent : TZUGFeRDAdditionalContent = nil{$ENDIF}) : Boolean;
+  public const
+    ccOK                       = 0;
+    ccNoPaymentsCount          = 1;
+    ccInvoiceTypeNotSupported  = 2;
+    ccTooManyPrecedingInvoices = 3;
+    ccTooManySEPADirectDebit   = 4;
+    ccTooManyCreditCard        = 5;
+    ccNoBT31BT30               = 6;
+    ccNoBT31BT32               = 7;
+    ccPrepaidPaymentNotSupported = 8;
   public
-    class function ConsistencyCheck(_Invoice : TInvoice; _Version : TXRechnungVersion) : Boolean;
+    class function ConsistencyCheck(_Invoice : TInvoice; _Version : TXRechnungVersion) : Boolean; overload;
+    class function ConsistencyCheck(_Invoice : TInvoice; _Version : TXRechnungVersion; out _ErrorCode : Integer) : Boolean; overload;
     class procedure CorrectDueDateIfNotDefined(_Invoice : TInvoice);
 
     class procedure SaveToStream(_Invoice : TInvoice; _Version : TXRechnungVersion; _Stream : TStream);
@@ -224,14 +236,24 @@ end;
 class function TXRechnungInvoiceAdapter.ConsistencyCheck(_Invoice: TInvoice;
   _Version: TXRechnungVersion): Boolean;
 var
+  lErrorCode : Integer;
+begin
+  Result := TXRechnungInvoiceAdapter.ConsistencyCheck(_Invoice, _Version, lErrorCode);
+end;
+
+class function TXRechnungInvoiceAdapter.ConsistencyCheck(_Invoice: TInvoice;
+  _Version: TXRechnungVersion; out _ErrorCode: Integer): Boolean;
+var
   lCount,i : Integer;
 begin
   Result := true;
+  _ErrorCode := ccOK;
 
   //Mindestens eine Zahlungsanweisung notwendig (bei ZUGFeRD nur im Profil EXTENDED)
   if (_Invoice.PaymentTypes.Count = 0) and
      (_Version <> TXRechnungVersion.XRechnungVersion_ReadingSupport_ZUGFeRDFacturX) then
   begin
+    _ErrorCode := ccNoPaymentsCount;
     Result := false;
     exit;
   end;
@@ -248,6 +270,7 @@ begin
                                    itc_Cancellation
                                    ]) then
   begin
+    _ErrorCode := ccInvoiceTypeNotSupported;
     Result := false;
     exit;
   end;
@@ -257,6 +280,7 @@ begin
                    TXRechnungVersion.XRechnungVersion_30x_UNCEFACT]) then
   if _Invoice.PrecedingInvoiceReferences.Count > 1 then
   begin
+    _ErrorCode := ccTooManyPrecedingInvoices;
     Result := false;
     exit;
   end;
@@ -268,6 +292,7 @@ begin
     inc(lCount);
   if lCount > 1 then
   begin
+    _ErrorCode := ccTooManySEPADirectDebit;
     Result := false;
     exit;
   end;
@@ -279,6 +304,7 @@ begin
     inc(lCount);
   if lCount > 1 then
   begin
+    _ErrorCode := ccTooManyCreditCard;
     Result := false;
     exit;
   end;
@@ -288,6 +314,7 @@ begin
   if (_Invoice.AccountingSupplierParty.VATCompanyID = '') and
      (_Invoice.AccountingSupplierParty.CompanyID = '') then
   begin
+    _ErrorCode := ccNoBT31BT30;
     Result := false;
     exit;
   end;
@@ -296,6 +323,17 @@ begin
   if (_Invoice.AccountingSupplierParty.VATCompanyID = '') and
      (_Invoice.AccountingSupplierParty.VATCompanyNumber = '') then
   begin
+    _ErrorCode := ccNoBT31BT32;
+    Result := false;
+    exit;
+  end;
+
+  //BG-DEX-09 THIRD PARTY PAYMENT Extension NUR XRechnung UBL !!!! https://blog.seeburger.com/de/xrechnung-2-3-1-gueltig-ab-dem-01-08-2023/
+  if _Invoice.PrepaidPayments.Count > 0 then
+  if not (_Version in [//TXRechnungVersion.XRechnungVersion_230_UBL_Deprecated, Version 2.3 wird nicht mehr gepflegt
+                   TXRechnungVersion.XRechnungVersion_30x_UBL]) then
+  begin
+    _ErrorCode := ccPrepaidPaymentNotSupported;
     Result := false;
     exit;
   end;
@@ -388,11 +426,12 @@ begin
     XRechnungVersion_30x_UBL      : Result := TXRechnungInvoiceAdapter301.LoadDocumentUBL(_Invoice,_XmlDocument,_Error);
     XRechnungVersion_230_UNCEFACT_Deprecated : Result := TXRechnungInvoiceAdapter230.LoadDocumentUNCEFACT(_Invoice,_XmlDocument,_Error);
     XRechnungVersion_30x_UNCEFACT : Result := TXRechnungInvoiceAdapter301.LoadDocumentUNCEFACT(_Invoice,_XmlDocument,_Error);
-    ZUGFeRDExtendedVersion_232 : Result := TXRechnungInvoiceAdapter301.LoadDocumentUNCEFACT(_Invoice,_XmlDocument,_Error);
     {$IFNDEF ZUGFeRD_Support}
+    ZUGFeRDExtendedVersion_232 : Result := TXRechnungInvoiceAdapter301.LoadDocumentUNCEFACT(_Invoice,_XmlDocument,_Error);
     XRechnungVersion_ReadingSupport_ZUGFeRDFacturX : Result := TXRechnungInvoiceAdapter301.LoadDocumentUNCEFACT(_Invoice,_XmlDocument,_Error);
     {$ELSE}
     XRechnungVersion_ReadingSupport_ZUGFeRDFacturX,
+    ZUGFeRDExtendedVersion_232,
     ZUGFeRDExtendedVersion_1_NotSupported : Result := TZUGFeRDInvoiceAdapter.LoadFromXMLDocument(_Invoice,_XmlDocument,_Error,_AdditionalContent);
     {$ENDIF}
     else exit;
@@ -463,10 +502,22 @@ begin
   Result := StrToCurrDef(_Val,0,fs);
 end;
 
-class function TXRechnungHelper.UnitPriceAmountToStr(
+class function TXRechnungHelper.UnitPriceAmountToStrUBL(
   _Val: Currency): String;
 begin
   Result := System.StrUtils.ReplaceText(Format('%.2f',[_Val]),',','.');
+end;
+
+class function TXRechnungHelper.UnitPriceAmountToStrCII(
+  _Val: Currency): String;
+var
+  lRounded : Currency;
+begin
+  lRounded := RoundTo(_Val,-2);
+  if _Val = lRounded then
+    Result := System.StrUtils.ReplaceText(Format('%.2f',[_Val]),',','.')
+  else
+    Result := System.StrUtils.ReplaceText(Format('%.4f',[_Val]),',','.');
 end;
 
 class function TXRechnungHelper.DateFromStrUBLFormat(const _Val : String) : TDateTime;
@@ -1798,10 +1849,13 @@ begin
   _Invoice.PurchaseOrderReference := _InvoiceDescriptor.OrderNo;
   if _InvoiceDescriptor.SpecifiedProcuringProject <> nil then
     _Invoice.ProjectReference := _InvoiceDescriptor.SpecifiedProcuringProject.ID;
+  //noch nicht unterstuetzt  _Invoice.ReceiptDocumentReference
   if _InvoiceDescriptor.ContractReferencedDocument <> nil then
     _Invoice.ContractDocumentReference := _InvoiceDescriptor.ContractReferencedDocument.ID;
   if _InvoiceDescriptor.DespatchAdviceReferencedDocument <> nil then
     _Invoice.DeliveryReceiptNumber := _InvoiceDescriptor.DespatchAdviceReferencedDocument.ID;
+  if _InvoiceDescriptor.ReceivableSpecifiedTradeAccountingAccounts.Count > 0 then
+    _Invoice.BuyerAccountingReference := _InvoiceDescriptor.ReceivableSpecifiedTradeAccountingAccounts[0].TradeAccountID;
   //Seller
   if _InvoiceDescriptor.Seller <> nil then
   begin
@@ -1972,7 +2026,7 @@ begin
         _Invoice.PaymentTermCashDiscount1Days := DaysBetween(_Invoice.InvoiceIssueDate,_InvoiceDescriptor.PaymentTermsList[i].DueDate)
       else
       if _InvoiceDescriptor.PaymentTermsList[i].DueDays.HasValue then
-        _Invoice.PaymentTermCashDiscount1Days := Trunc(_InvoiceDescriptor.PaymentTermsList[i].DueDate.Value);
+        _Invoice.PaymentTermCashDiscount1Days := Trunc(_InvoiceDescriptor.PaymentTermsList[i].DueDays.Value);
       _Invoice.PaymentTermCashDiscount1Percent := _InvoiceDescriptor.PaymentTermsList[i].Percentage;
       _Invoice.PaymentTermCashDiscount1Base := _InvoiceDescriptor.PaymentTermsList[i].BaseAmount;
       _Invoice.PaymentTermCashDiscount1ActualAmount := _InvoiceDescriptor.PaymentTermsList[i].ActualAmount;
@@ -2027,7 +2081,10 @@ begin
     lInvoiceLine.SellersItemIdentification := _InvoiceDescriptor.TradeLineItems[i].SellerAssignedID;
     lInvoiceLine.BuyersItemIdentification := _InvoiceDescriptor.TradeLineItems[i].BuyerAssignedID;
     if _InvoiceDescriptor.TradeLineItems[i].BuyerOrderReferencedDocument <> nil then
+    begin
+      lInvoiceLine.OrderNumber := _InvoiceDescriptor.TradeLineItems[i].BuyerOrderReferencedDocument.ID;
       lInvoiceLine.OrderLineReference := _InvoiceDescriptor.TradeLineItems[i].BuyerOrderReferencedDocument.LineID;
+    end;
     if _InvoiceDescriptor.TradeLineItems[i].ReceivableSpecifiedTradeAccountingAccounts.Count > 0 then
       lInvoiceLine.BuyerAccountingReference := _InvoiceDescriptor.TradeLineItems[i].ReceivableSpecifiedTradeAccountingAccounts.First.TradeAccountID;
     lInvoiceLine.TaxPercent := _InvoiceDescriptor.TradeLineItems[i].TaxPercent;

@@ -1,4 +1,4 @@
-﻿{
+{
 Copyright (C) 2025 Landrix Software GmbH & Co. KG
 Sven Harazim, info@landrix.de
 Version 3.0.2
@@ -16,10 +16,9 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages
-  ,System.SysUtils, System.Variants, System.Classes
-  ,System.IOUtils,System.Win.COMObj,System.UITypes
+  ,System.IOUtils, System.SysUtils, System.Variants, System.Classes
+  ,System.Types, System.Win.COMObj,System.UITypes, System.StrUtils
   ,Xml.xmldom,Xml.XMLDoc,Xml.XMLIntf,Xml.XMLSchema,
-  System.Types,
   UXRechnungTypesOns
   ;
 
@@ -266,6 +265,7 @@ begin
     cmd.Add('chcp 65001 >nul');
     cmd.Add('pushd '+QuoteIfContainsSpace(ExtractFilePath(tmpFilename)));
 
+    //https://github.com/ZUGFeRD/mustangproject/blob/f9905d6fca18733b468541415b9750654045cc09/Mustang-CLI/src/main/java/org/mustangproject/commandline/Main.java#L45
     cmd.Add(QuoteIfContainsSpace(JavaRuntimeEnvironmentPath+'bin\java.exe')+' -Xmx1G '+
             '-Dfile.encoding=UTF-8 -jar '+QuoteIfContainsSpace(MustangprojectPath+'Mustang-CLI.jar')+
             ' --action combine' +
@@ -675,7 +675,7 @@ begin
     exit;
   if ValitoolLicense = '' then
     exit;
-  if not FileExists(ValitoolPath+'valitool.cli.exe') then
+  if not FileExists(ValitoolPath+'valitool.exe') then
     exit;
   if not DirectoryExists(TempPath) then
     exit;
@@ -695,7 +695,7 @@ begin
              ' --mode validate'+
              ' --pdfReport';
 
-    Result := ExecAndWait(QuoteIfContainsSpace(ValitoolPath+'valitool.cli.exe'),cmdline);
+    Result := ExecAndWait(QuoteIfContainsSpace(ValitoolPath+'valitool.exe'),cmdline);
 
     _CmdOutput := CmdOutput.Text;
 
@@ -737,7 +737,7 @@ begin
     exit;
   if not DirectoryExists(_Directory) then
     exit;
-  if not FileExists(ValitoolPath+'valitool.cli.exe') then
+  if not FileExists(ValitoolPath+'valitool.exe') then
     exit;
 
   cmdLine :=
@@ -748,7 +748,7 @@ begin
            ' --pdfReport'+
            ' --noXMLReport';
 
-  Result := ExecAndWait(QuoteIfContainsSpace(ValitoolPath+'valitool.cli.exe'),cmdline);
+  Result := ExecAndWait(QuoteIfContainsSpace(ValitoolPath+'valitool.exe'),cmdline);
 end;
 
 function TXRechnungValidationHelperJava.Visualize(const _InvoiceXMLData: String;
